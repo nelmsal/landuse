@@ -1,48 +1,63 @@
-
-## modelling ----
-
+## NLURI MODEL ----
 
 #load("model.RData")
 ## What is being called?
 ## bring in useful terms before called?
 ## what if it calls in the wrong state?
 
+
+# 0 Inputs ----
+
 ## packages
 library(tidyverse)
 library(tidymodels)
 library(tigris)
 library(sf)
+library(glue)
 
-# 1 LINEAR MODEL ----
+outcome.var <- "maxhd_macro"
 
-## baseline
-mod_linear <- 
-  lm(
-    log(maxhd_macro) ~ .,
-    data = 
-      left_join(
-       regression,
-       infill) %>% 
-      select(-GEOID, -maxhd_micro, -geometry) %>% 
-      filter(!is.infinite(log(maxhd_macro))))
+# continous variables
+continuous.var <- 
+  c(
+    "isoperi_mean", "building_size", "intersection_density", 
+    "prop_4way", "orientation_order", "ndvi_mean", 
+    "built_intensity", "dist_towns", "dist_city", 
+    "pct_nonwhite", "density", "household_size
+    median_income"
+    )
+lag.var <- str_c(continuous.var, "_lag3")
+dummy.var <- c("built_change")
+admin.var <- c("geometry", "GEOID")
 
-summary(mod_linear)
+all.var <- c(outcome.var, continuous.var, lag.var, dummy.var, admin.var)
 
 
 ## with or without lags
-regression_lags <- left_join(
-  regression %>%
-    select(., -maxhd_micro), 
-  infill %>%
-    select(., -geometry))
+reg.data <- 
+  left_join(
+    regression, 
+    infill %>%
+      select(., -geometry)) %>%
+  select(any_of(all.var))
 
-# regression_lags <- 
-#   regression_lags %>%
-    # select(., 
-    #        GEOID, 
-    #        maxhd_macro, 
-    #        any_of(useful_terms), 
-    #        built_change) 
+# 1 LINEAR MODEL ----
+
+form = function(outcome_str = outcome.var) glue("{outcome_str} ~ .")
+form_log = function(outcome_str = outcome.var) glue("log({outcome_str}) ~ .")
+
+## baseline
+model.linear <- 
+  lm(
+    form(outcome.var),
+    data = 
+      reg.data %>% 
+        select(-any_of(admin.var)) %>% 
+        mutate("{{outcome.var}}" := log(.data[[outcome.var]])) %>%
+        filter_all(all_vars(!is.infinite(.)))
+    )
+
+summary(model.linear)
 
 
 # 2. Holdout County for testing ----
@@ -52,7 +67,7 @@ set.seed(43)
 
 # hold out one county for testing
 holdout <- 
-  regression_lags %>% 
+  reg.data %>% 
     pull(GEOID) %>% 
     str_sub(1, 5) %>%
     unique() %>%
@@ -63,14 +78,14 @@ blocks %>%
   plot()
 
 crosswalk <-
-  regression %>% 
-  filter(str_sub(GEOID, 1, 5) != holdout) %>%
-  drop_na() %>% 
-  transmute(GEOID, 
-            maxhd_macro = log(maxhd_macro)) %>%
-  filter(!is.infinite(maxhd_macro)) %>% 
+  reg.data %>% 
+    mutate("{{outcome.var}}" := log(.data[[outcome.var]])) %>%
+    filter_all(all_vars(!is.infinite(.))) %>%
+    filter(str_sub(GEOID, 1, 5) != holdout) %>%
+    drop_na() %>% 
   left_join(blocks) %>% 
-  select(-area_total) %>%
+  #select(-any_of(admin.var)) %>% 
+  select(-area_total, -GEOID) %>%
   st_as_sf()
 
 plot(crosswalk)
@@ -78,13 +93,7 @@ plot(crosswalk)
 set.seed(42)
 
 
-
 # 3. Train/Test Split & Prepare Model ----
-
-# rescale continous variables
-continuous <- c("isoperi_mean", "building_size", "intersection_density", "prop_4way", "orientation_order", "ndvi_mean", "built_intensity", "dist_towns", "dist_city", "pct_nonwhite", "density", "household_size", "median_income")
-lags <- str_c(continuous, "_lag3")
-dummy <- c("built_change")
 
 split <- 
   regression_lags %>% 
@@ -224,24 +233,21 @@ split <-
 train <- training(split)
 test <- testing(split)
 
+useful_terms_noDummy = 
+  useful_terms[(useful_terms != dummy)]
+
 prediction_recipe <- 
   recipe(maxhd_macro ~ ., 
          data = train) %>%
   # add_role(GEOID, new_role = "ID") %>%
-  step_scale(all_of(c(useful_terms))) %>%
-  step_dummy(all_of(dummy))
+  #step_scale(all_of(useful_terms_noDummy), -all_of(dummy)) %>%
+  step_scale(all_numeric_predictors()) %>%
+  step_dummy(all_of(!!dummy))
+
+#train %>% select(all_of(useful_terms_noDummy)) %>% glimpse()
 
 prediction_prep <- prep(prediction_recipe)
 prediction_juice <- juice(prediction_prep)
-
-
-
-which.nonnum <- function(x) {
-  badNum <- is.na(suppressWarnings(as.numeric(as.character(x))))
-  which(badNum & !is.na(x))
-}
-lapply(train, which.nonnum)
-
 
 # 6. Random Forest ----
 
