@@ -19,6 +19,15 @@ sig_format = function(num, sig=.001, prefix='<', round=3) {
 sig_format(3.0001)
 sig_format(.001)
 
+trail_zero = function(x) sub("0+$", "", x)
+lead_zero = function(x) ifelse(as.numeric(x)==0,"0", sub("^0+", "", x))
+no_zero <- function(x) {
+  ifelse(as.numeric(x)==0,"0",
+         lead_zero(x) %>%
+           trail_zero(.))
+}
+cnum = function(x, digits=3) x %>% round(digits) %>% no_zero(.)
+
 mod_linear %>%
   tidy() %>%
   mutate_at(
