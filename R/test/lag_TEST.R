@@ -5,7 +5,6 @@
 ## bring in useful terms before called?
 ## what if it calls in the wrong state?
 
-
 # 0. Inputs ----
 
 ## packages
@@ -22,11 +21,11 @@ COMP_STATE_STR = 'md'
 outcome.var <- "maxhd_macro"
 
 # continous variables
-continuous.var <- 
+continuous.var <-
   c(
-    "isoperi_mean", "building_size", "intersection_density", 
-    "prop_4way", "orientation_order", "ndvi_mean", 
-    "built_intensity", "dist_towns", "dist_city", 
+    "isoperi_mean", "building_size", "intersection_density",
+    "prop_4way", "orientation_order", "ndvi_mean",
+    "built_intensity", "dist_towns", "dist_city",
     "pct_nonwhite", "density", "household_size
     median_income"
     )
@@ -37,14 +36,14 @@ admin.var <- c("geometry", "GEOID")
 all.var <- c(outcome.var, continuous.var, lag.var, dummy.var, admin.var)
 
 ## with or without lags
-reg.data <- 
+reg.data <-
   reg.data %>%
   select(any_of(all.var))
 
-infinites = 
-  reg.data %>% 
+infinites =
+  reg.data %>%
   # remove GEOID, & geometry
-  select(-any_of(admin.var)) %>% 
+  select(-any_of(admin.var)) %>%
   # turn outcome into log
   mutate({{outcome.var}} := log(.data[[outcome.var]])) %>%
   filter_all(all_vars(!is.infinite(.))) %>%
@@ -57,18 +56,18 @@ glue("{diff} ({round(100*diff/nrow(reg.data), 1)}%)") %>%
 
 # 1. LINEAR MODEL ----
 
-form = function(outcome_str = outcome.var) 
+form = function(outcome_str = outcome.var)
   glue("{outcome_str} ~ .") %>% as.formula()
 model_formula = form()
 
 ## baseline
-model.linear <- 
+model.linear <-
   lm(
     model_formula,
-    data = 
-      reg.data %>% 
+    data =
+      reg.data %>%
         # remove GEOID, & geometry
-        select(-any_of(admin.var)) %>% 
+        select(-any_of(admin.var)) %>%
         # turn outcome into log
         mutate({{outcome.var}} := log(.data[[outcome.var]])) %>%
         filter_all(all_vars(!is.infinite(.))) %>%
@@ -85,25 +84,25 @@ model.linear %>%
 set.seed(43)
 
 # hold out one county for testing
-holdout <- 
-  reg.data %>% 
-    pull(GEOID) %>% 
+holdout <-
+  reg.data %>%
+    pull(GEOID) %>%
     str_sub(1, 5) %>%
     unique() %>%
     sample(1)
 
-blocks.data %>% 
-  transmute(holdout = factor(if_else(str_sub(GEOID, 1, 5) == holdout, 1, 0))) %>% 
+blocks.data %>%
+  transmute(holdout = factor(if_else(str_sub(GEOID, 1, 5) == holdout, 1, 0))) %>%
   plot()
 
 #crosswalk <-
-  reg.data %>% 
+  reg.data %>%
     mutate({{outcome.var}} := log(.data[[outcome.var]])) %>%
     filter_all(all_vars(!is.infinite(.))) %>%
     filter(str_sub(GEOID, 1, 5) != holdout) %>%
-    drop_na() %>% 
-  left_join(blocks.data) %>% 
-  #select(-any_of(admin.var)) %>% 
+    drop_na() %>%
+  left_join(blocks.data) %>%
+  #select(-any_of(admin.var)) %>%
   select(-area_total, -GEOID) %>%
   st_as_sf() %>%
   plot()
@@ -112,8 +111,8 @@ blocks.data %>%
 set.seed(42)
 
 
-split.data <- 
-  reg.data %>% 
+split.data <-
+  reg.data %>%
   filter(str_sub(GEOID, 1, 5) != holdout) %>%
   drop_na() %>%
   select(-GEOID) %>%
@@ -141,7 +140,7 @@ bind_rows(mutate(train.data, split = "train"),
 
 # 3. Lasso (Penalty & Features) ----
 
-lasso1.recipe <- 
+lasso1.recipe <-
   recipe(
     data = train.data,
     formula = model_formula) %>%
@@ -166,7 +165,7 @@ lasso1.model <-
 
 
 ## Tune grid & Cross-Validation to find MAE & RMSE
-lasso1.tuned = 
+lasso1.tuned =
     workflow() %>%
     add_recipe(lasso1.recipe) %>%
     add_model(lasso1.model) %>%
@@ -178,7 +177,7 @@ lasso1.tuned =
       metrics = metric_set(mae, rmse, rsq)
       )
 
-lasso1.penalty <- 
+lasso1.penalty <-
   lasso1.tuned %>%
     select_best(metric="mae") %>%
     pull(penalty)
@@ -192,11 +191,11 @@ lasso1.tuned %>%
   collect_metrics() %>%
   ggplot(aes(x = penalty, y = mean)) +
   geom_point(size = 2) +
-  geom_line() + 
+  geom_line() +
   geom_vline(
-    xintercept = lasso1.penalty, 
-    color='red') + 
-  scale_x_continuous(labels = no_zero) + 
+    xintercept = lasso1.penalty,
+    color='red') +
+  scale_x_continuous(labels = no_zero) +
   facet_wrap(~.metric, scales = 'free') +
   labs(
     title = glue("{STATE_CAP} Lasso: Penalty Selection"),
@@ -225,17 +224,17 @@ useful_terms <-
   # for some reason, it adds "X1" to built hange
   gsub('_X1', '', .)
 
-useful_terms.count = 
-  glue("{length(useful_terms)} of {nrow(lasso1.recipe$var_info)} variables used") 
+useful_terms.count =
+  glue("{length(useful_terms)} of {nrow(lasso1.recipe$var_info)} variables used")
 useful_terms.count %>%
   print()
 
 
 ## filtering out the problematic variables
-# regression_lags <- 
+# regression_lags <-
 #   regression_lags %>%
 #   select(
-#     GEOID, maxhd_macro, 
+#     GEOID, maxhd_macro,
 #     any_of(useful_terms), built_change)
 
 # 4. Train/Test Split 2 ----
@@ -244,17 +243,17 @@ useful_terms.count %>%
 set.seed(43)
 
 # hold out one county for testing
-holdout <- 
-  reg.data %>% 
-  pull(GEOID) %>% 
+holdout <-
+  reg.data %>%
+  pull(GEOID) %>%
   str_sub(1, 5) %>%
   unique() %>%
   sample(1)
 
 set.seed(42)
-         
-split.data <- 
-  reg.data %>% 
+
+split.data <-
+  reg.data %>%
   filter(str_sub(GEOID, 1, 5) != holdout) %>%
   drop_na() %>%
   # dummy as factor
@@ -276,7 +275,7 @@ test.data <- testing(split.data)
 
 set.seed(42)
 
-rf.recipe <- 
+rf.recipe <-
   recipe(
     data = train.data,
     formula = model_formula
@@ -293,25 +292,25 @@ rf.model <-
   rand_forest(trees = 1000,
               mtry = tune(),
               min_n = tune()) %>%
-  set_mode("regression") %>% 
+  set_mode("regression") %>%
   set_engine("ranger")
 
-rf.workflow <- 
-  workflow() %>% 
+rf.workflow <-
+  workflow() %>%
   add_recipe(rf.recipe) %>%
-  add_model(rf.model) 
+  add_model(rf.model)
 
 doParallel::registerDoParallel(cores = 6)
 
 # create a regular grid to search through
-rf.grid <- 
+rf.grid <-
   grid_regular(
     mtry(range = c(2, 10)),
     min_n(range = c(2, 10)),
     levels = 5
   )
 
-rf.folds <- 
+rf.folds <-
   vfold_cv(
     train.data,
     v = 10
@@ -319,7 +318,7 @@ rf.folds <-
 
 # tune the next (six cores, ~4 mins)
 tictoc::tic()
-rf.tuned <- 
+rf.tuned <-
   tune_grid(
     rf.workflow,
     resamples = rf.folds,
@@ -328,7 +327,7 @@ rf.tuned <-
   )
 tictoc::toc()
 
-rf.best <- select_best(rf.tuned, "mae") 
+rf.best <- select_best(rf.tuned, "mae")
 
 rf.tuned %>%
   collect_metrics() %>%
@@ -338,16 +337,16 @@ rf.tuned %>%
   geom_hline(
     aes(yintercept = mean),color='red',
     data =.%>% filter(mtry == rf.best$mtry, min_n == rf.best$min_n)) +
-  scale_x_continuous(labels = no_zero) + 
+  scale_x_continuous(labels = no_zero) +
   facet_wrap(~.metric, scales = 'free') +
-  xlab("Num of Predictors Randomly Sampled as Candidates") + 
+  xlab("Num of Predictors Randomly Sampled as Candidates") +
   labs(
     title = "Random Forest Parameter Selection",
     subtitle = glue("Grid Search, mtry={rf.best$mtry}, min_n={rf.best$min_n}"),
-    size="Minimum Data Points\nper Node (min_n)") + 
+    size="Minimum Data Points\nper Node (min_n)") +
   theme_minimal()
 
-rf.final <- 
+rf.final <-
   finalize_model(
     rf.model,
     rf.best
@@ -355,7 +354,7 @@ rf.final <-
 
 ######PLOT VARIABLES
 
-rf.fit = 
+rf.fit =
   rf.final %>%
   set_engine("ranger", importance = "permutation") %>%
   fit(
@@ -367,16 +366,16 @@ rf.fit %>%
   vip::vip(
     geom = "point",
     num_features = rf.fit$fit$num.independent.variables
-  ) + 
+  ) +
   labs(
     title = glue("{STATE_CAP} Random Forest: Variables Importance"),
-    subtitle = 
+    subtitle =
       paste(
         glue('mtry={cnum(rf.fit$fit$mtry)},  min_n={cnum(rf.fit$fit$min.node.size)}'),
         glue('MSE={cnum(rf.fit$fit$prediction.error)},  R^2={cnum(rf.fit$fit$r.squared)}'),
         sep=',  '
       )
-  ) + 
+  ) +
   theme_minimal()
 filename = glue("vip_{STATE_STR}_lag_lasso.png")
 ggsave(plot = last_plot(), filename = filename, height = 6, width = 6, dpi = 300)
@@ -384,22 +383,22 @@ ggsave(plot = last_plot(), filename = filename, height = 6, width = 6, dpi = 300
 ########FIT
 
 # FIT rf
-rf.results <- 
+rf.results <-
   workflow() %>%
   add_recipe(rf.recipe) %>%
   add_model(rf.final) %>%
   last_fit(split.data)
 
 # good for an an r-squared of 0.74
-rf.predictions <- 
+rf.predictions <-
   rf.results %>%
   collect_predictions() %>%
   mutate(
     error = abs(exp(.data[[outcome.var]]) - exp(.pred))
   ) %>%
   transmute(
-    predicted = exp(.pred), 
-    observed = exp(.data[[outcome.var]]), 
+    predicted = exp(.pred),
+    observed = exp(.data[[outcome.var]]),
     error = error #exp(error)
   )
 
@@ -407,24 +406,24 @@ rf.predictions <-
 
 ########PLOT
 
-#ERRORS 
+#ERRORS
 log_breaks = c(0, 0.1, 1, 10, 100)
 log_limits = c(0.01, 100)
 
 rf.predictions %>%
-  ggplot(aes(observed, predicted, colour = error)) + 
+  ggplot(aes(observed, predicted, colour = error)) +
   geom_point(alpha = 0.5) +
   geom_abline(linetype = 2, alpha = 0.5) +
   #scale_x_log10(breaks = log_breaks, limits = log_limits, labels=lead_zero) +
   #scale_y_log10(breaks = log_breaks, limits = log_limits, labels=lead_zero) +
-  scale_colour_gradientn(colours = RColorBrewer::brewer.pal(n = 9, name = 'YlOrRd'), 
+  scale_colour_gradientn(colours = RColorBrewer::brewer.pal(n = 9, name = 'YlOrRd'),
                          name = 'Error',
-                         breaks = c(5, 10, 15), limits = c(0, 20), 
+                         breaks = c(5, 10, 15), limits = c(0, 20),
                          oob = scales::squish) +
   labs(title = glue("{STATE_CAP} Random Forest: Prediction Errors"),
        subtitle = "Max Allowable Housing Units per Acre",
        x = "Observed Density", # (log10)
-       y = "Predicted Density") + 
+       y = "Predicted Density") +
   theme_minimal()
 
 filename = glue("rf_in_{STATE_STR}_lag_lass.png")
@@ -436,9 +435,9 @@ rf.predictions %>%
   mutate(group = ntile(observed, 4)) %>%
   pivot_longer(cols = c(observed, predicted)) %>%
   group_by(group, name) %>%
-  summarise(value = mean(value)) %>% 
-  mutate(error = abs(value - lag(value))) %>% 
-  ungroup() %>% 
+  summarise(value = mean(value)) %>%
+  mutate(error = abs(value - lag(value))) %>%
+  ungroup() %>%
   fill(error, .direction = "up") %>%
   ggplot(aes(x = factor(group), y = value, colour = name, style = name)) +
     geom_point() +
@@ -446,7 +445,7 @@ rf.predictions %>%
     scale_x_discrete(labels = c("Rural", "Exurban", "Suburban", "Urban")) +
     scale_y_log10() +
     labs(title = glue("{STATE_CAP} Random Forest: Comparing Predictions"),
-         subtitle = "Quartiles of Housing Density", 
+         subtitle = "Quartiles of Housing Density",
          y = "Allowable Housing Units per Acre", x = "") +
     theme_minimal()
 
@@ -460,8 +459,8 @@ ggsave(plot = last_plot(), filename = filename, height = 6, width = 8, dpi = 300
 
 
 ## out of sample
-updated.data <- 
-  reg.data %>% 
+updated.data <-
+  reg.data %>%
   drop_na() %>%
   # dummy as factor
   mutate_at(dummy.var, as.factor) %>%
@@ -469,8 +468,8 @@ updated.data <-
   mutate({{outcome.var}} := log(.data[[outcome.var]])) %>%
   filter_all(all_vars(!is.infinite(.)))
 
-all.recipe <- 
-  recipe(formula = model_formula, 
+all.recipe <-
+  recipe(formula = model_formula,
          data = updated.data%>%
            select(outcome.var, useful_terms)) %>%
   step_scale(all_numeric()) %>%
@@ -479,7 +478,7 @@ all.recipe <-
 all.prep <- prep(all.recipe)
 all.juice <- juice(all.prep)
 
-all.fit <- 
+all.fit <-
   rf.final %>%
   set_engine("ranger") %>%
   fit(formula = model_formula,
@@ -494,7 +493,7 @@ updated.data$prediction = predict(all.fit, all.juice)$.pred
 updated.data %>%
   filter(str_sub(GEOID, 1, 5) == holdout) %>%
   summarise(MAE = mean(maxhd_macro),
-            n = n()) %>% 
+            n = n()) %>%
   mutate(MAE = exp(MAE))
 
 ggsave(
@@ -507,37 +506,37 @@ ggsave(
 
 # 8. Random Forest: Test ----
 
-test.juice <- 
-  recipe(model_formula, 
+test.juice <-
+  recipe(model_formula,
          data = test.data %>%
            select(useful_terms, outcome.var)) %>%
   step_scale(all_numeric()) %>%
   step_dummy(all_of(dummy.var)) %>%
-  prep() %>% 
+  prep() %>%
   juice()
 
 # out of sample is way worse with a MAE of 71.9 across 547 block groups
 predict(all.fit, test.juice) %>%
   mutate(outcome = .data[[outcome.var]],
-         error = exp(abs(maxhd_macro - .pred))) %>% 
+         error = exp(abs(maxhd_macro - .pred))) %>%
   summarise(MAE = mean(error),
             n = n())
 
 predict(holdout_fit, test_juice) %>%
   mutate(maxhd_macro = test[[outcome.var]],
          error = abs(maxhd_macro - .pred)) %>%
-  mutate(error = exp(abs(maxhd_macro - .pred))) %>% 
-  ggplot(aes(exp(maxhd_macro), exp(.pred), colour = error)) + 
+  mutate(error = exp(abs(maxhd_macro - .pred))) %>%
+  ggplot(aes(exp(maxhd_macro), exp(.pred), colour = error)) +
   geom_point(alpha = 0.5) +
   geom_abline(linetype = 2, alpha = 0.5) +
   scale_x_log10(breaks = c(0, 0.1, 1, 10, 100), limits = c(0.01, 100)) +
   scale_y_log10(breaks = c(0, 0.1, 1, 10, 100), limits = c(0.01, 100)) +
-  scale_colour_gradientn(colours = RColorBrewer::brewer.pal(n = 9, name = 'YlOrRd'), 
+  scale_colour_gradientn(colours = RColorBrewer::brewer.pal(n = 9, name = 'YlOrRd'),
                          breaks = c(5, 10, 15), limits = c(0, 20), oob = scales::squish) +
   labs(title = "Random Forest Predictions",
        subtitle = "Errors outside sample",
        x = "max allowable density",
-       y = "prediction") + 
+       y = "prediction") +
   theme_minimal()
 
 filename = glue("rf_out_{STATE_STR}_lag_lasso.png")
@@ -550,9 +549,9 @@ predict(holdout_fit, test_juice) %>%
   mutate(group = ntile(observed, 4)) %>%
   pivot_longer(cols = c(observed, predicted)) %>%
   group_by(group, name) %>%
-  summarise(value = mean(value)) %>% 
-  mutate(error = abs(value - lag(value))) %>% 
-  ungroup() %>% 
+  summarise(value = mean(value)) %>%
+  mutate(error = abs(value - lag(value))) %>%
+  ungroup() %>%
   fill(error, .direction = "up") %>%
   ggplot(aes(x = factor(group), y = value, colour = name, style = name)) +
   geom_point() +
@@ -560,7 +559,7 @@ predict(holdout_fit, test_juice) %>%
   scale_x_discrete(labels = c("rural", "exurban", "suburban", "urban")) +
   scale_y_log10() +
   labs(title = "Comparing Predictions (out of sample)",
-       subtitle = "Quartiles of housing density", 
+       subtitle = "Quartiles of housing density",
        x = "", "", y = "") +
   theme_minimal()
 
@@ -575,13 +574,13 @@ predict(holdout_fit, test_juice) %>%
          median_income_lag3 = test$median_income_lag3) %>%
   left_join(select(regression_lags, median_income_lag3, GEOID)) %>%
   transmute(predicted = exp(.pred), observed = exp(maxhd_macro)) %>%
-  mutate(error = abs(observed - predicted), 
+  mutate(error = abs(observed - predicted),
          group = factor(ntile(observed, 10))) %>%
   pivot_longer(cols = c(observed, predicted)) %>%
   group_by(group, name) %>%
-  summarise(value = mean(value)) %>% 
-  mutate(error = abs(value - lag(value))) %>% 
-  ungroup() %>% 
+  summarise(value = mean(value)) %>%
+  mutate(error = abs(value - lag(value))) %>%
+  ungroup() %>%
   fill(error, .direction = "up") %>%
   ggplot(aes(x = factor(group), y = value, colour = name, style = name)) +
   geom_point() +
@@ -589,7 +588,7 @@ predict(holdout_fit, test_juice) %>%
   # scale_x_discrete(labels = c("rural", "exurban", "suburban", "urban")) +
   # scale_y_log10() +
   labs(title = plot_title,
-       subtitle = "Deciles of housing density", 
+       subtitle = "Deciles of housing density",
        x = "< less dense | more dense >", y = "housing density") +
   theme_minimal()
 
@@ -607,7 +606,7 @@ predict(holdout_fit, test_juice) %>%
   left_join(select(regression_lags, median_income_lag3, GEOID)) %>%
   transmute(GEOID,
             predicted_nj = exp(.pred),
-            observed_nj = exp(maxhd_macro)) %>% 
+            observed_nj = exp(maxhd_macro)) %>%
   left_join(nj_md) %>%
   # transmute(predicted = ((predicted * 0.3) + (predicted_nj * 0.7)),
   #           observed = ((observed * 0.5) + (observed_nj * 0.5))) %>%
@@ -616,9 +615,9 @@ predict(holdout_fit, test_juice) %>%
   drop_na() %>%
   pivot_longer(cols = c(observed, predicted)) %>%
   group_by(group, name) %>%
-  summarise(value = mean(value)) %>% 
-  mutate(error = abs(value - lag(value))) %>% 
-  ungroup() %>% 
+  summarise(value = mean(value)) %>%
+  mutate(error = abs(value - lag(value))) %>%
+  ungroup() %>%
   fill(error, .direction = "up") %>%
   ggplot(aes(x = factor(group), y = value, colour = name, style = name)) +
   geom_point() +
@@ -627,7 +626,7 @@ predict(holdout_fit, test_juice) %>%
   # scale_y_log10() +
   scale_y_continuous(breaks = c(0, 10, 20, 30)) +
   labs(title = plot_title,
-       subtitle = "Deciles of housing density", 
+       subtitle = "Deciles of housing density",
        x = "< less dense | more dense >", y = "housing density") +
   theme_minimal()
 
@@ -638,14 +637,14 @@ ggsave(
   predict(holdout_fit, test_juice) %>%
     mutate(maxhd_macro = test[[outcome.var]],
            error = abs(maxhd_macro - .pred),
-           density = test$density) %>% 
-    left_join(select(regression, density, GEOID)) %>% 
+           density = test$density) %>%
+    left_join(select(regression, density, GEOID)) %>%
     left_join(blocks.data) %>%
-    st_as_sf() %>% 
-    transmute(predicted = exp(.pred), observed = exp(maxhd_macro), error = exp(error), GEOID) %>% 
+    st_as_sf() %>%
+    transmute(predicted = exp(.pred), observed = exp(maxhd_macro), error = exp(error), GEOID) %>%
     ggplot() +
     geom_sf(aes(fill = error), size = 0, colour = NA) +
-    scale_fill_gradientn(colours = RColorBrewer::brewer.pal(n = 9, name = 'YlOrRd'), 
+    scale_fill_gradientn(colours = RColorBrewer::brewer.pal(n = 9, name = 'YlOrRd'),
                          breaks = c(5, 10, 15), limits = c(0, 20), oob = scales::squish) +
     theme_void(),
   filename = "map_out.png", height = 6, width = 10, dpi = 300)
@@ -655,25 +654,25 @@ ggsave(
     collect_predictions()  %>%
     mutate(error = abs(maxhd_macro - .pred),
            density = train$density) %>%
-    left_join(select(regression, density, GEOID)) %>% 
+    left_join(select(regression, density, GEOID)) %>%
     left_join(blocks.data) %>%
     st_as_sf() %>%
-    transmute(predicted = exp(.pred), observed = exp(maxhd_macro), error = exp(error), GEOID) %>% 
+    transmute(predicted = exp(.pred), observed = exp(maxhd_macro), error = exp(error), GEOID) %>%
     ggplot() +
     geom_sf(aes(fill = error), size = 0, colour = NA) +
-    scale_fill_gradientn(colours = RColorBrewer::brewer.pal(n = 9, name = 'YlOrRd'), 
+    scale_fill_gradientn(colours = RColorBrewer::brewer.pal(n = 9, name = 'YlOrRd'),
                          breaks = c(5, 10, 15), limits = c(0, 20), oob = scales::squish) +
     theme_void(),
   filename = "map_in.png", height = 6, width = 10, dpi = 300)
 
-results_out <- 
+results_out <-
   predict(holdout_fit, test_juice) %>%
   mutate(maxhd_macro = test[[outcome.var]],
          median_income_lag3 = test$median_income_lag3) %>%
   left_join(select(regression_lags, median_income_lag3, GEOID)) %>%
   transmute(GEOID,
             predicted_nj = exp(.pred),
-            observed_nj = exp(maxhd_macro)) %>% 
+            observed_nj = exp(maxhd_macro)) %>%
   left_join(nj_md) %>%
   # transmute(predicted = ((predicted * 0.3) + (predicted_nj * 0.7)),
   #           observed = ((observed * 0.5) + (observed_nj * 0.5))) %>%

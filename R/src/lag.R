@@ -2,7 +2,7 @@
 ## modelling
 ###############################
 
-load("model.RData")
+#load("model.RData")
 
 ## packages
 library(tidyverse)
@@ -14,16 +14,23 @@ library(sf)
 mod_linear <- 
   lm(log(maxhd_macro) ~ .,
      data = 
-       regression %>% 
-       left_join(infill) %>%
-       select(-GEOID, -maxhd_micro, -geometry) %>% 
-       filter(!is.infinite(log(maxhd_macro))))
+       left_join(
+         regression,
+         infill) %>% 
+        select(-GEOID, -maxhd_micro, -geometry) %>% 
+        filter(!is.infinite(log(maxhd_macro))))
 
 summary(mod_linear)
 
 ## with or without lags
-regression_lags <- left_join(select(regression, -maxhd_micro), select(infill, -geometry))
-regression_lags <- select(regression_lags, GEOID, maxhd_macro, any_of(useful_terms), built_change)
+regression_lags <- left_join(
+  regression %>%
+    select(., -maxhd_micro), 
+  infill %>%
+    select(., -geometry))
+regression_lags <- 
+  regression_lags %>%
+    select(., GEOID, maxhd_macro, any_of(useful_terms), built_change)
 
 ## preparing the data
 set.seed(43)
@@ -31,10 +38,10 @@ set.seed(43)
 # hold out one county for testing
 holdout <- 
   regression_lags %>% 
-  pull(GEOID) %>% 
-  str_sub(1, 5) %>%
-  unique() %>%
-  sample(1)
+    pull(GEOID) %>% 
+    str_sub(1, 5) %>%
+    unique() %>%
+    sample(1)
 
 blocks %>% 
   transmute(holdout = factor(if_else(str_sub(GEOID, 1, 5) == holdout, 1, 0))) %>% 

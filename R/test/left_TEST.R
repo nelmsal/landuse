@@ -18,47 +18,46 @@ YEAR = 2020
 
 ### TEMP PRE EXTRACTED CSV
 DATA_DIR = "C:\\Users\\nelms\\OneDrive - PennO365\\Penn\\Wharton\\NLURI\\data"
-pre_extract_csv = 
+pre_extract_csv =
   "regression_dataframe_nj_updated_220701.csv" %>%
   paste(DATA_DIR, ., sep='\\')
 
 ## block group geometry
-blocks.data <- 
+blocks.data <-
   block_groups(
-    state = STATE_FIPS, 
+    state = STATE_FIPS,
     year = YEAR,
-    cb = TRUE, class = 'sf') %>% 
-  st_transform() %>% 
-  transmute(GEOID, 
-            area_total = units::set_units(st_area(geometry), acres),
-            centroid = st_centroid(geometry)) %>%
-  mutate(X = st_coordinates(centroid)[, 1],
-         Y = st_coordinates(centroid)[, 2]) %>%
-  select(-centroid)
+    cb = TRUE, class = 'sf') %>%
+  st_transform() %>%
+  transmute(
+    GEOID,
+    area_total = units::set_units(st_area(geometry), acres)) %>%
+  # from helper script
+  getXYcols(.)
 
 ## data for the left side of the regression
-base.data <- 
+base.data <-
   read_csv(
-    pre_extract_csv, 
+    pre_extract_csv,
     col_type = cols("GEOID" = col_character())
     )
 
 ## data to put through the spatial lag function
-lag.data <- 
+lag.data <-
   base.data %>%
-    select(-maxhd_micro, -maxhd_macro) %>% 
+    select(-maxhd_micro, -maxhd_macro) %>%
     mutate(built_change = factor(built_change)) %>%
   left_join(blocks.data) %>%
     mutate(area_total = units::drop_units(area_total)) %>%
     st_as_sf()
 
 ## smoothing
-infill.data <- 
+infill.data <-
   nn_interpolate(lag.data, 3)
 
 ## combine data
-reg.data <- 
+reg.data <-
   left_join(
-    base.data, 
+    base.data,
     infill.data %>%
       select(., -geometry))
