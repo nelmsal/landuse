@@ -3,14 +3,18 @@
 library(kableExtra)
 library(broom)
 
-lead_zero = function(num) sub("^0+", "", num %>% as.character())  
+hist(log(zoning$maxhd_macro))
+hist(log(zoning$maxhd_micro))
+
+
+lead_zero = function(num) sub("^0+", "", num %>% as.character())
 
 sig_format = function(num, sig=.001, prefix='<', round=3) {
   ifelse(
-    abs(num) <= sig, 
-      sig %>% 
+    abs(num) <= sig,
+      sig %>%
        lead_zero() %>%
-       paste0(prefix,.), 
+       paste0(prefix,.),
       num %>%
        round(digits=round) %>%
        lead_zero()
@@ -54,4 +58,3 @@ workflow() %>%
     #align = 'lrrrr'
   ) %>%
   kable_styling()
-  

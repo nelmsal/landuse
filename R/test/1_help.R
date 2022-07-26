@@ -9,6 +9,7 @@ library(tigris)
 library(crsuggest)
 
 web_mercator_crs <- 3857
+GEE_CRS = web_mercator_crs
 
 ## get centroid
 getXYcols <- function(data) {
@@ -85,21 +86,22 @@ nn_interpolate <- function(data, depth = 5) {
 
 }
 
-## get CRS
+## SAVE THESE FUNCTIONS SO THE SCRIPT WILL RUN
 get_crs <-
   function(state){
 
     # get name
     geog_name <-
       tigris::fips_codes %>%
-      filter(state_code == geography) %>%
-      distinct(state) %>%
+      filter(state_code == !!state) %>%
+      distinct(state_name) %>%
       pull()
 
     # get local crs
     geog_proj <-
       crsuggest::crs_sf %>%
-      filter(str_detect(crs_name, "NAD83\\(HARN\\)"),
+      filter(str_detect(crs_name, "NAD83"),
+             !str_detect(crs_name, "\\("),
              crs_units == "m") %>%
       filter(str_detect(crs_name, geog_name)) %>%
       slice(1) %>%
